@@ -10,7 +10,7 @@ export default function Home() {
         Welcome to the <span className="text-blue-600 dark:text-blue-400">Knowledge Hub!</span>
       </h1>
       <p className="text-lg mb-8 text-center max-w-prose">
-        Your AI-powered, real-time collaborative workspace. Let's get started.
+        Your AI-powered, real-time collaborative workspace. Let&apos;s get started.
       </p>
 
       {/* Example shadcn/ui Button */}
