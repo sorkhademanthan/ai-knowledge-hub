@@ -35,10 +35,23 @@ enum DocumentStatus {
   ARCHIVED
 }
 
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+}
+
+enum PlanType {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
 // === Models ===
 
 model User {
-  // UUIDs are best for primary keys in PostgreSQL for distributed systems
   id            String     @id @default(uuid())
   email         String     @unique
   name          String?
@@ -47,6 +60,10 @@ model User {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   
+  // Full-text search index on name and email
+  @@index([name, email])
+  
+  // Relationships
   ownerWorkspaces Workspace[]
   memberships   WorkspaceMember[]
   documents     Document[]
@@ -58,7 +75,8 @@ model User {
   sessions      Session[]
 }
 
-model Workspace {
+// Rename Workspace to Team as per requirements
+model Team {
   id          String            @id @default(uuid())
   name        String
   slug        String            @unique
@@ -70,47 +88,73 @@ model Workspace {
   owner       User              @relation(fields: [ownerId], references: [id])
   
   documents   Document[]
-  members     WorkspaceMember[]
+  members     TeamMember[]
 
+  // Search optimization
+  @@index([name, slug])
   @@index([ownerId])
 }
 
-model WorkspaceMember {
-  // Composite primary key
+model TeamMember {
   userId      String
   user        User      @relation(fields: [userId], references: [id])
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id])
   role        MemberRole
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@id([userId, workspaceId])
+  @@id([userId, teamId])
   @@index([userId])
-  @@index([workspaceId])
+  @@index([teamId])
+
+  @@map("WorkspaceMember") // Keep existing table name for migration
 }
 
 model Document {
   id          String         @id @default(uuid())
   title       String
-  content     Json           // PostgreSQL supports Json
+  content     Json
+  summary     String?        // AI-generated summary for search
   type        DocumentType   @default(TEXT)
   status      DocumentStatus @default(DRAFT)
   
   authorId    String
   author      User           @relation(fields: [authorId], references: [id])
   
-  workspaceId String
-  workspace   Workspace      @relation(fields: [workspaceId], references: [id])
+  teamId      String
+  team        Team           @relation(fields: [teamId], references: [id])
   
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   
   comments    Comment[]
+  embeddings  Embedding[]
 
-  @@unique([title, workspaceId])
-  @@index([authorId])
-  @@index([workspaceId])
+  // Full-text search optimization
+  @@index([title, summary])
+  @@index([authorId, teamId])
+  @@index([status, type])
+  @@unique([title, teamId])
+
+  @@map("Document") // Keep existing table name
+}
+
+// NEW: Embedding model for vector search
+model Embedding {
+  id          String   @id @default(uuid())
+  content     String   // The text content that was embedded
+  vector      String   // JSON string of the embedding vector
+  metadata    Json?    // Additional metadata (chunk index, etc.)
+  
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+
+  // Search optimization
+  @@index([documentId])
+  @@index([content]) // For text-based search fallback
 }
 
 model Comment {
@@ -128,21 +172,41 @@ model Comment {
 
   @@index([authorId])
   @@index([documentId])
+  @@index([createdAt]) // For chronological ordering
 }
 
+// UPDATED: Enhanced Subscription model
 model Subscription {
-  id               String    @id @default(uuid())
-  userId           String    @unique
-  user             User      @relation(fields: [userId], references: [id])
+  id                     String             @id @default(uuid())
+  status                 SubscriptionStatus @default(TRIALING)
+  planType               PlanType           @default(FREE)
   
-  planType         String
-  documentsLimit   Int?
-  aiRequestsLimit  Int?
-  storageLimit     BigInt?   // BigInt is supported in PostgreSQL
-  teamMembersLimit Int?
+  // Stripe integration
+  stripeCustomerId       String?            @unique
+  stripeSubscriptionId   String?            @unique
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
   
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  // Plan limits
+  documentsLimit         Int?
+  aiRequestsLimit        Int?
+  storageLimit           BigInt?
+  teamMembersLimit       Int?
+  
+  // Usage tracking
+  documentsUsed          Int                @default(0)
+  aiRequestsUsed         Int                @default(0)
+  storageUsed            BigInt             @default(0)
+  
+  userId                 String             @unique
+  user                   User               @relation(fields: [userId], references: [id])
+  
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  // Search and analytics optimization
+  @@index([status, planType])
+  @@index([stripeCustomerId])
 }
 
 // === NextAuth.js models ===
