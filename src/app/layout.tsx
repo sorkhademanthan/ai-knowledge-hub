@@ -1,12 +1,14 @@
 // src/app/layout.tsx
-import './globals.css'; // This line is crucial
-import { Inter } from 'next/font/google'; // Example font import
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import SessionProviderWrapper from '@/components/session-provider-wrapper';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Knowledge Hub',
-  description: 'AI-Powered Real-Time Knowledge Hub',
+  description: 'AI-powered real-time knowledge hub',
 };
 
 export default function RootLayout({
@@ -16,7 +18,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <SessionProviderWrapper>
+          {children}
+        </SessionProviderWrapper>
+      </body>
     </html>
   );
 }
